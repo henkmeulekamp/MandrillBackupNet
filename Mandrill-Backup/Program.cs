@@ -46,7 +46,7 @@ namespace Mandrill_Backup
                     break;
                 case Action.Delete:
                     DeleteAllTemplates(options.Key,
-                            Directory.CreateDirectory(dir.FullName + "\\" + string.Format("backups-{0:yyyy-MM-dd_hh-mm-ss-tt}", DateTime.Now)),
+                            Directory.CreateDirectory(dir.FullName + "\\" + string.Format("backups-{0:yyyy-MM-dd_HH-mm-ss}", DateTime.Now)),
                             options.TemplateName);
                     break;
                 default:
