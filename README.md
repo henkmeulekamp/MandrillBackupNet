@@ -8,26 +8,25 @@ Regular backups are a safe guard against accidentally blowing away all of your t
   
 See [Pre-existing GO version which uses AWS s3](https://github.com/publicgoodsw/mandrill-backup)
   
-Options: Export, Import, Delete; complete account or by template name  
+Options: Export, Import, Delete; all templates in account or by template name  
 *Delete will always make a backup first..*
   
 ## Usage
 
 - Export from Mandril to disk
-    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a Export`
+    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key> -a Export`
 - Import from Disk to Mandrill
-    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a Import`
+    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key> -a Import`
 - Delete all templates in account (dont worry, we will make a backup first)
-    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a delete`
-
-	
+    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key> -a delete`
+  
 Import and exporting just a single template:  
 - Export from Mandril to disk
-    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a Export -t "Your template name"`
+    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key> -a Export -t "Your template name"`
 - Import from Disk t0 Mandrill
-    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a Import -t "Your template name"`
+    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key> -a Import -t "Your template name"`
 - Delete all templates in account (dont worry, we will make a backup first)
-    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a delete -t "Your template name"`
+    - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key> -a delete -t "Your template name"`
   
 :unamused: note:  
 *The template name in above command is really the template name and not the slug. It will find the correct template by listing all templates and comparing the names.
@@ -35,5 +34,7 @@ There is some strange API issue where all add/update/delete parameters to identi
 
 ## Todo
 
+- import should do add or update (currently only adds, which will fail on existing template)
+    - this probably requires some change detection
 - git integration ?
     - integrate into repo, pull rebase and commit changes from mandrill
