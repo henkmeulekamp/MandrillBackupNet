@@ -1,11 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using JsonReader = JsonFx.Json.JsonReader;
@@ -18,6 +15,11 @@ namespace Mandrill_Backup
         public const string Mandrillurl = "https://mandrillapp.com/api/1.0/";
         //export optional name
         //import optional name
+
+        private static string FormatTemplateNameToFileName(string templateName)
+        {
+            return templateName + ".template.json";
+        }
 
         private static string ToJsonPrettyPrint(dynamic obj)
         {
@@ -37,37 +39,69 @@ namespace Mandrill_Backup
             switch (options.Action)
             {
                 case Action.Export:
-                    ExportallTemplatesToFolder(options.Key, dir);
+                    ExportTemplatesToFolder(options.Key, dir, options.TemplateName);
                     break;
                 case Action.Import:
-                    ImportFromFolderToMandrill(options.Key, dir);
+                    ImportFromFolderToMandrill(options.Key, dir, options.TemplateName);
                     break;
                 case Action.Delete:
                     DeleteAllTemplates(options.Key,
-                            Directory.CreateDirectory(dir.FullName + "\\" + string.Format("backups-{0:yyyy-MM-dd_hh-mm-ss-tt}", DateTime.Now)));
+                            Directory.CreateDirectory(dir.FullName + "\\" + string.Format("backups-{0:yyyy-MM-dd_hh-mm-ss-tt}", DateTime.Now)),
+                            options.TemplateName);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
         }
 
-        private static void ImportFromFolderToMandrill(string apikey, DirectoryInfo exportDir)
+        private static void ImportFromFolderToMandrill(string apikey, DirectoryInfo exportDir, string templateName = null)
         {
             var reader = new JsonReader();
 
-            foreach (var f in exportDir.GetFiles())
+            var requestedTemplateFileName = !string.IsNullOrWhiteSpace(templateName)
+                ? FormatTemplateNameToFileName(templateName)
+                : null;
+
+            foreach (var f in exportDir.GetFiles()
+                    .Where(f=>string.IsNullOrWhiteSpace(templateName)
+                        || f.Name.Equals(requestedTemplateFileName, StringComparison.OrdinalIgnoreCase)
+                    ))
             {
                 dynamic template = reader.Read(File.ReadAllText(f.FullName));
                 UploadToDestination(apikey, template);
             }
         }
 
-        private static void ExportallTemplatesToFolder(string apikey, DirectoryInfo exportDir)
+        private static string GetSlugName(string apikey, string templateName)
         {
             var reader = new JsonReader();
             var httpHelper = new HttpHelper();
 
-            var templatesResponse = httpHelper.Post(Mandrillurl + "/templates/list.json", new {key = apikey}).Result;
+            var templatesResponse = httpHelper.Post(Mandrillurl + "/templates/list.json", new { key = apikey }).Result;
+
+            if (templatesResponse.Code == HttpStatusCode.OK)
+            {
+                //todo is there a better way?
+                dynamic templates = reader.Read(templatesResponse.Body);
+
+                foreach (var t in templates)
+                {
+                    if (templateName.Equals(t.name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return t.slug;
+                    }                    
+                }
+            }
+            throw new Exception("No template found by name: " + templateName);
+        }
+
+        private static void ExportTemplatesToFolder(string apikey, DirectoryInfo exportDir, string templateName = null)
+        {
+            var reader = new JsonReader();
+            var httpHelper = new HttpHelper();
+
+            var templatesResponse =  httpHelper.Post(Mandrillurl + "/templates/list.json", new { key = apikey }).Result;
+
             if (templatesResponse.Code == HttpStatusCode.OK)
             {
                 //
@@ -75,22 +109,33 @@ namespace Mandrill_Backup
 
                 foreach (var t in templates)
                 {
+                    if (!string.IsNullOrWhiteSpace(templateName)
+                        && !templateName.Equals(t.name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        //this seems to be the only way to get single template by name (not slug!)
+                        continue;
+                    }
+
                     Console.WriteLine("Exporting: " + t.name + " - " + t.slug);
 
-                    File.WriteAllText(Path.Combine(exportDir.FullName, t.name + ".template.json"), ToJsonPrettyPrint(t));
+                    File.WriteAllText(Path.Combine(exportDir.FullName,
+                            FormatTemplateNameToFileName(t.name)), 
+                            ToJsonPrettyPrint(t));
                 }
             }
         }
 
-        private static void DeleteAllTemplates(string apikey, DirectoryInfo backupDir)
+        private static void DeleteAllTemplates(string apikey, DirectoryInfo backupDir, 
+                                               string templateName = null)
         {
             var reader = new JsonReader();
             var httpHelper = new HttpHelper();
 
             //make backups.. always
-            ExportallTemplatesToFolder(apikey, backupDir);
+            ExportTemplatesToFolder(apikey, backupDir, templateName);
 
             var templatesResponse = httpHelper.Post(Mandrillurl + "/templates/list.json", new {key = apikey}).Result;
+       
             if (templatesResponse.Code == HttpStatusCode.OK)
             {
                 //
@@ -98,6 +143,13 @@ namespace Mandrill_Backup
 
                 foreach (var t in templates)
                 {
+                    if (!string.IsNullOrWhiteSpace(templateName)
+                     && !templateName.Equals(t.name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        //this seems to be the only way to get single template by name (not slug!)
+                        continue;
+                    }
+
                     //delete, take slug and use as name
                     string name = t.slug;
 
@@ -128,45 +180,6 @@ namespace Mandrill_Backup
         internal static bool HasProperty(dynamic d, string propertyname)
         {
             return ((IDictionary<string, object>) d).ContainsKey(propertyname);
-        }
-    }
-
-    internal class HttpHelper
-    {
-        //some helper methods
-        internal async Task<HttpResult> Post<T>(string url, T request)
-        {
-            //set authorization header to basic clientId:secret
-            var client = CreateHttpClient();
-
-            //format message to post
-            string requestData = JsonConvert.SerializeObject(request);
-
-            //set posted data to form-urlencoded content
-            var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
-            {
-                Content = new StringContent(requestData, Encoding.UTF8, "application/json")
-            };
-
-            return await client.SendAsync(httpRequest).ContinueWith(responseTask =>
-            {
-                var response = responseTask.Result;
-
-                return new HttpResult
-                {
-                    Body = response.Content.ReadAsStringAsync().Result, Code = response.StatusCode, StatusDescription = response.ReasonPhrase
-                };
-            }).ConfigureAwait(false);
-        }
-
-        internal HttpClient CreateHttpClient()
-        {
-            var client = new HttpClient();
-
-            //request json back
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-            return client;
         }
     }
 }
