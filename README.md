@@ -15,7 +15,7 @@ Options: Export, Import, Delete; complete account or by template name
 
 - Export from Mandril to disk
     - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a Export`
-- Import from Disk t0 Mandrill
+- Import from Disk to Mandrill
     - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a Import`
 - Delete all templates in account (dont worry, we will make a backup first)
     - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a delete`
