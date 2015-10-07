@@ -30,8 +30,8 @@ Import and exporting just a single template:
     - `mandrill-backup.exe -e c:\temp\mandrill -k <your-mandril-api-key>> -a delete -t "Your template name"`
   
 :unamused: note:  
- *The template name in above command is really the template name and not the slug. It will find the correct template by listing all templates and comparing the names.
-There is some strange API issue where all add/update/delete parameters to identify a specific template is called name, while this is actually the slug. The template has a name and slug field.
+*The template name in above command is really the template name and not the slug. It will find the correct template by listing all templates and comparing the names.
+There is some strange API issue where all add/update/delete parameters to identify a specific template is called name, while this is actually the slug. The template has a name and slug field.*
 
 ## Todo
 
