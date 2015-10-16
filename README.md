@@ -33,10 +33,10 @@ Import and exporting just a single template:
 |  param |   | description  | Values  |
 |---|---|---|---|
 | -e  | required  | Export directory  | `c:\temp\export\`  |
-| -k  | required  | Mandrill api key  | **secret**  |
+| -k  | required  | Mandrill api key  | *secret*  |
 | -a  | required  | Action  | Export, Import  |
-| -t  | optional  | Template name  |   |
-| -d  | optional  | Ignore dates  |   |
+| -t  | optional  | Template name  | `"my template name"`  |
+| -d  | optional  | Ignore dates  | Makes it easier to work with source controlled backup folder  |
 
 
 :unamused: note:  
