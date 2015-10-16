@@ -21,7 +21,8 @@ namespace Mandrill_Backup
         public Action Action { get; set; }
         [Option('t', "Optional template name", Required = false, HelpText = "Import/Export single template")]
         public string TemplateName { get; set; }
-
+        [Option('d', "Ignore dates", Required = false, HelpText = "Ignore date fields in meta data")]
+        public bool IgnoreDates { get; set; }
         [HelpOption]
         public string GetUsage()
         {

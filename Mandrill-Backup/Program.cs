@@ -39,7 +39,7 @@ namespace Mandrill_Backup
             switch (options.Action)
             {
                 case Action.Export:
-                    ExportTemplatesToFolder(options.Key, dir, options.TemplateName);
+                    ExportTemplatesToFolder(options.Key, dir, options.TemplateName, options.IgnoreDates);
                     break;
                 case Action.Import:
                     ImportFromFolderToMandrill(options.Key, dir, options.TemplateName);
@@ -95,7 +95,8 @@ namespace Mandrill_Backup
             throw new Exception("No template found by name: " + templateName);
         }
 
-        private static void ExportTemplatesToFolder(string apikey, DirectoryInfo exportDir, string templateName = null)
+        private static void ExportTemplatesToFolder(string apikey, DirectoryInfo exportDir,
+            string templateName = null, bool ignoreDates = false)
         {
             var reader = new JsonReader();
             var httpHelper = new HttpHelper();
@@ -118,8 +119,18 @@ namespace Mandrill_Backup
 
                     Console.WriteLine("Exporting: " + t.name + " - " + t.slug);
 
-                    File.WriteAllText(Path.Combine(exportDir.FullName,
-                            FormatTemplateNameToFileName(t.name)), 
+                    //if templates are exported to source control and imported into other accounts 
+                    //it is usefull to strip out dates; otherwise they will be seen as an update to the file 
+                    //and you end it endless loops of updating accounts.
+                    if (ignoreDates)
+                    {
+                        if (HasProperty(t, "published_at")) t.published_at = "2015-01-01 10:10:10";
+                        if (HasProperty(t, "created_at")) t.created_at = "2015-01-01 10:10:10";
+                        if (HasProperty(t, "updated_at")) t.updated_at = "2015-01-01 10:10:10";
+                        if (HasProperty(t, "draft_updated_at")) t.draft_updated_at = "2015-01-01 10:10:10";
+                    }
+
+                    File.WriteAllText(Path.Combine(exportDir.FullName,FormatTemplateNameToFileName(t.name)), 
                             ToJsonPrettyPrint(t));
                 }
             }
