@@ -39,14 +39,15 @@ namespace Mandrill_Backup
             switch (options.Action)
             {
                 case Action.Export:
+                    //setup export writer.                                    
                     ExportTemplatesToFolder(options.Key, dir, options.TemplateName, options.IgnoreDates);
                     break;
                 case Action.Import:
                     ImportFromFolderToMandrill(options.Key, dir, options.TemplateName);
                     break;
                 case Action.Delete:
-                    DeleteAllTemplates(options.Key,
-                            Directory.CreateDirectory(dir.FullName + "\\" + string.Format("backups-{0:yyyy-MM-dd_HH-mm-ss}", DateTime.Now)),
+                    DeleteTemplates(options.Key,
+                            CreateBackupDir(dir),
                             options.TemplateName);
                     break;
                 default:
@@ -54,54 +55,56 @@ namespace Mandrill_Backup
             }
         }
 
-        private static void ImportFromFolderToMandrill(string apikey, DirectoryInfo exportDir, string templateName = null)
+        private static DirectoryInfo CreateBackupDir(DirectoryInfo dir)
         {
-            var reader = new JsonReader();
+            return Directory.CreateDirectory(dir.FullName + "\\" + string.Format("backups-{0:yyyy-MM-dd_HH-mm-ss}", DateTime.Now));
+        }
 
+        private static void ImportFromFolderToMandrill(string apikey, DirectoryInfo exportDir, string templateName = null)
+        {      
+            var currentTemplates = GetTemplatesFromAccount(apikey, ignoreDates:true);
+            
             var requestedTemplateFileName = !string.IsNullOrWhiteSpace(templateName)
                 ? FormatTemplateNameToFileName(templateName)
                 : null;
 
+            //foreach file in directory (optionally filtered by requested template name)            
             foreach (var f in exportDir.GetFiles()
                     .Where(f=>string.IsNullOrWhiteSpace(templateName)
                         || f.Name.Equals(requestedTemplateFileName, StringComparison.OrdinalIgnoreCase)
                     ))
             {
-                dynamic template = reader.Read(File.ReadAllText(f.FullName));
-                UploadToDestination(apikey, template);
+               
+
+                var content = File.ReadAllText(f.FullName);
+                var templateNameFromFile = f.Name.Replace(".template.json", "");
+                if (currentTemplates.ContainsKey(templateNameFromFile))
+                {
+                    if (!content.Equals(currentTemplates[templateNameFromFile]))
+                    {
+                        //only update when newer
+                        UpdateTemplate(apikey, content);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Skipping template " + f.Name);
+                    }
+                }
+                else
+                {
+                    AddTemplateToAccount(apikey, content);
+                }
             }
         }
 
-        private static string GetSlugName(string apikey, string templateName)
+        private static IDictionary<string,string> GetTemplatesFromAccount(string apikey,
+                        string templateName = null, bool ignoreDates = false)
         {
+            var templatesInAccount= new Dictionary<string,string>();
             var reader = new JsonReader();
             var httpHelper = new HttpHelper();
 
             var templatesResponse = httpHelper.Post(Mandrillurl + "/templates/list.json", new { key = apikey }).Result;
-
-            if (templatesResponse.Code == HttpStatusCode.OK)
-            {
-                //todo is there a better way?
-                dynamic templates = reader.Read(templatesResponse.Body);
-
-                foreach (var t in templates)
-                {
-                    if (templateName.Equals(t.name, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return t.slug;
-                    }                    
-                }
-            }
-            throw new Exception("No template found by name: " + templateName);
-        }
-
-        private static void ExportTemplatesToFolder(string apikey, DirectoryInfo exportDir,
-            string templateName = null, bool ignoreDates = false)
-        {
-            var reader = new JsonReader();
-            var httpHelper = new HttpHelper();
-
-            var templatesResponse =  httpHelper.Post(Mandrillurl + "/templates/list.json", new { key = apikey }).Result;
 
             if (templatesResponse.Code == HttpStatusCode.OK)
             {
@@ -116,8 +119,7 @@ namespace Mandrill_Backup
                         //this seems to be the only way to get single template by name (not slug!)
                         continue;
                     }
-
-                    Console.WriteLine("Exporting: " + t.name + " - " + t.slug);
+                    Console.WriteLine("Found template: " + t.name + " - " + t.slug);
 
                     //if templates are exported to source control and imported into other accounts 
                     //it is usefull to strip out dates; otherwise they will be seen as an update to the file 
@@ -129,37 +131,52 @@ namespace Mandrill_Backup
                         if (HasProperty(t, "updated_at")) t.updated_at = "2015-01-01 10:10:10";
                         if (HasProperty(t, "draft_updated_at")) t.draft_updated_at = "2015-01-01 10:10:10";
                     }
-
-                    File.WriteAllText(Path.Combine(exportDir.FullName,FormatTemplateNameToFileName(t.name)), 
-                            ToJsonPrettyPrint(t));
+                    templatesInAccount.Add(t.name, ToJsonPrettyPrint(t));                
                 }
             }
+            return templatesInAccount;
         }
 
-        private static void DeleteAllTemplates(string apikey, DirectoryInfo backupDir, 
+        private static IDictionary<string,string> ExportTemplatesToFolder(string apikey, 
+            DirectoryInfo exportDir,
+            string templateName = null, bool ignoreDates = false)
+        {
+
+            var templates = GetTemplatesFromAccount(apikey, templateName, ignoreDates);
+
+            foreach (var t in templates)
+            {
+                Console.WriteLine("Exporting: " + t.Value);
+
+                File.WriteAllText(Path.Combine(exportDir.FullName, FormatTemplateNameToFileName(t.Key)),
+                                  t.Value);
+            }
+            return templates;
+        }    
+
+        private static void DeleteTemplates(string apikey, DirectoryInfo backupDir, 
                                                string templateName = null)
         {
             var reader = new JsonReader();
             var httpHelper = new HttpHelper();
 
             //make backups.. always
-            ExportTemplatesToFolder(apikey, backupDir, templateName);
+            var templates = ExportTemplatesToFolder(apikey, backupDir, templateName);
 
-            var templatesResponse = httpHelper.Post(Mandrillurl + "/templates/list.json", new {key = apikey}).Result;
-       
-            if (templatesResponse.Code == HttpStatusCode.OK)
+            if (templates.Any())
             {
-                //
-                dynamic templates = reader.Read(templatesResponse.Body);
-
-                foreach (var t in templates)
+                
+                foreach (var template in templates)
                 {
+                    //check if we wanted to delete a single template
                     if (!string.IsNullOrWhiteSpace(templateName)
-                     && !templateName.Equals(t.name, StringComparison.OrdinalIgnoreCase))
+                     && !templateName.Equals(template.Key, StringComparison.OrdinalIgnoreCase))
                     {
                         //this seems to be the only way to get single template by name (not slug!)
                         continue;
                     }
+
+                    dynamic t = reader.Read(template.Value);
 
                     //delete, take slug and use as name
                     string name = t.slug;
@@ -171,8 +188,31 @@ namespace Mandrill_Backup
             }
         }
 
-        private static void UploadToDestination(string apikey, dynamic template)
+        private static void AddTemplateToAccount(string apikey, string templateContent)
         {
+            var reader = new JsonReader();
+            dynamic template = reader.Read(templateContent);
+         
+            var httpHelper = new HttpHelper();
+            if (!string.IsNullOrWhiteSpace(apikey))
+            {
+                //make sure to rewrite everything to the name
+                string name = template.name;
+
+                template.key = apikey;
+                template.slug = name;
+                
+                var addResponse = httpHelper.Post(Mandrillurl + "/templates/add.json", template).Result;
+
+                Console.WriteLine(string.Format("Template add result {0}: {1} - {2}", template.slug, addResponse.Code, addResponse.StatusDescription));
+            }
+        }
+        
+        private static void UpdateTemplate(string apikey, string templateContent)
+        {       
+            var reader = new JsonReader();
+            dynamic template = reader.Read(templateContent);
+
             var httpHelper = new HttpHelper();
             if (!string.IsNullOrWhiteSpace(apikey))
             {
@@ -182,9 +222,9 @@ namespace Mandrill_Backup
                 template.key = apikey;
                 template.slug = name;
 
-                var addResponse = httpHelper.Post(Mandrillurl + "/templates/add.json", template).Result;
+                var addResponse = httpHelper.Post(Mandrillurl + "/templates/update.json", template).Result;
 
-                Console.WriteLine(string.Format("Template add result {0}: {1} - {2}", template.slug, addResponse.Code, addResponse.StatusDescription));
+                Console.WriteLine(string.Format("Template update result {0}: {1} - {2}", template.slug, addResponse.Code, addResponse.StatusDescription));
             }
         }
 
