@@ -45,7 +45,5 @@ There is some strange API issue where all add/update/delete parameters to identi
 
 ## Todo
 
-- import should do add or update (currently only adds, which will fail on existing template)
-    - this probably requires some change detection
 - git integration ?
     - integrate into repo, pull rebase and commit changes from mandrill
