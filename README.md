@@ -32,19 +32,15 @@ Import and exporting just a single template:
 
 |  param |   | description  | Values  |
 |---|---|---|---|
-| -e  | required  | Export directory  | `c:\temp\export\`  will create a subfolder  ViewReadOnlyHtml with html exports |
+| -e  | required  | Export directory  | `c:\temp\export\`  will create a subfolder `ViewReadOnlyHtml` with html exports |
 | -k  | required  | Mandrill api key  | *secret*  |
 | -a  | required  | Action  | Export, Import  |
 | -t  | optional  | Template name  | `"my template name"`  |
 | -d  | optional  | Ignore dates  | Makes it easier to work with source controlled backup folder  |
 | -f  | optional  | Filter  | An optional label to filter the templates on export |
 
-:unamused: notes: 
-*Having to many templates in your mandrill account makes the list endpoint timeout, there is no paging option, use the filter to reduce set of templates retreived
-*The template name in above command is really the template name and not the slug. It will find the correct template by listing all templates and comparing the names.
-There is some strange API issue where all add/update/delete parameters to identify a specific template is called name, while this is actually the slug. The template has a name and slug field.*
-
-## Todo
-
-- git integration ?
-    - integrate into repo, pull rebase and commit changes from mandrill
+:unamused: notes:  
+  
+1. Having to many templates in your mandrill account makes the list endpoint timeout, there is no paging option, use the filter to reduce set of templates retreived
+2. The template name in above command is really the template name and not the slug. It will find the correct template by listing all templates and comparing the names.
+There is some strange API issue where all add/update/delete parameters to identify a specific template is called name, while this is actually the slug. The template has a name and slug field.
