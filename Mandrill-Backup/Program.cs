@@ -1,12 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
-using JsonReader = JsonFx.Json.JsonReader;
+using Newtonsoft.Json.Linq;
 
 namespace Mandrill_Backup
 {
@@ -17,15 +16,15 @@ namespace Mandrill_Backup
         //export optional name
         //import optional name
 
-        private static string FormatTemplateNameToFileName(string templateName)
+        private static string FormatTemplateNameToFileName(string templateName, string extension = "json")
         {
             return templateName.Replace('/','-')
                                .Replace('\\', '-')
                                .Replace('|', '-') 
-                             + ".template.json";
+                             + $".template.{extension}";
         }
 
-        private static string ToJsonPrettyPrint(dynamic obj)
+        private static string ToJsonPrettyPrint(JObject obj)
         {
             return JsonConvert.SerializeObject(obj, Formatting.Indented, new JsonConverter[] { new StringEnumConverter() });
         }
@@ -46,7 +45,7 @@ namespace Mandrill_Backup
             {
                 case Action.Export:
                     //setup export writer.                                    
-                    ExportTemplatesToFolder(options.Key, dir, options.TemplateName, options.IgnoreDates);
+                    ExportTemplatesToFolder(options.Key, dir, options.TemplateName, options.IgnoreDates, options.TemplateFilter);
                     break;
                 case Action.Import:
                     ImportFromFolderToMandrill(options.Key, dir, options.TemplateName);
@@ -104,20 +103,25 @@ namespace Mandrill_Backup
         }
 
         private static IDictionary<string,string> GetTemplatesFromAccount(string apikey,
-                        string templateName = null, bool ignoreDates = false)
+                        string templateName = null, bool ignoreDates = false, string filter = null)
         {
             var templatesInAccount= new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-            var reader = new JsonReader();
+            
             var httpHelper = new HttpHelper();
 
-            var templatesResponse = httpHelper.Post(Mandrillurl + "/templates/list.json", new { key = apikey }).Result;
+            var templatesResponse = httpHelper.Post(Mandrillurl + "/templates/list.json", 
+                new
+                    {
+                        key = apikey,
+                        label = !string.IsNullOrWhiteSpace(filter) ? filter : null
+                    }).Result;
 
             if (templatesResponse.Code == HttpStatusCode.OK)
             {
-                //
-                dynamic templates = reader.Read(templatesResponse.Body);
+                JArray templates = JArray.Parse(templatesResponse.Body);
+                var jsonObjects = templates.OfType<JObject>().ToList();
 
-                foreach (var t in templates)
+                foreach (dynamic t in jsonObjects)
                 {
                     if (!string.IsNullOrWhiteSpace(templateName)
                         && !templateName.Equals(t.name, StringComparison.OrdinalIgnoreCase))
@@ -138,13 +142,13 @@ namespace Mandrill_Backup
                         if (HasProperty(t, "draft_updated_at")) t.draft_updated_at = "2015-01-01 10:10:10";
                     }
 
-                    if (!templatesInAccount.ContainsKey(t.name))
-                        templatesInAccount.Add(t.name, ToJsonPrettyPrint(t));
+                    if (!templatesInAccount.ContainsKey((string)t.name))
+                        templatesInAccount.Add((string)t.name, ToJsonPrettyPrint(t));
                     else
                     {
                         //else try add with slug
-                        if (!templatesInAccount.ContainsKey(t.slug))
-                            templatesInAccount.Add(t.slug, ToJsonPrettyPrint(t));
+                        if (!templatesInAccount.ContainsKey((string)t.slug))
+                            templatesInAccount.Add((string)t.slug, ToJsonPrettyPrint(t));
                         //else just forget
                     }            
                 }
@@ -154,10 +158,14 @@ namespace Mandrill_Backup
 
         private static IDictionary<string,string> ExportTemplatesToFolder(string apikey, 
             DirectoryInfo exportDir,
-            string templateName = null, bool ignoreDates = false)
+            string templateName = null, bool ignoreDates = false, string filter = null)
         {
 
-            var templates = GetTemplatesFromAccount(apikey, templateName, ignoreDates);
+            var templates = GetTemplatesFromAccount(apikey, templateName, ignoreDates, filter);
+
+            // create html view only subfolder
+            var fullHtmlFolder = Path.Combine(exportDir.FullName, "ViewReadOnlyHtml");
+            Directory.CreateDirectory(fullHtmlFolder);
 
             foreach (var t in templates)
             {
@@ -165,14 +173,25 @@ namespace Mandrill_Backup
 
                 File.WriteAllText(Path.Combine(exportDir.FullName, FormatTemplateNameToFileName(t.Key)),
                                   t.Value);
+
+                // write out full html which makes content viewable in browser (and do diffs when backed up to sourcecontrol!)
+                File.WriteAllText(Path.Combine(fullHtmlFolder, FormatTemplateNameToFileName(t.Key, "html")),
+                                ExtractHtmlAsString(t.Value));
             }
             return templates;
-        }    
+        }
+
+        private static string ExtractHtmlAsString(string templateJson)
+        {
+            dynamic template = JObject.Parse(templateJson);
+
+            return template.publish_code.ToString();
+        }
 
         private static void DeleteTemplates(string apikey, DirectoryInfo backupDir, 
                                                string templateName = null)
         {
-            var reader = new JsonReader();
+            //var reader = new JsonReader();
             var httpHelper = new HttpHelper();
 
             //make backups.. always
@@ -191,7 +210,7 @@ namespace Mandrill_Backup
                         continue;
                     }
 
-                    dynamic t = reader.Read(template.Value);
+                    dynamic t = JObject.Parse(template.Value);
 
                     //delete, take slug and use as name
                     string name = t.slug;
@@ -205,8 +224,8 @@ namespace Mandrill_Backup
 
         private static void AddTemplateToAccount(string apikey, string templateContent)
         {
-            var reader = new JsonReader();
-            dynamic template = reader.Read(templateContent);
+           
+            dynamic template = JObject.Parse(templateContent);
          
             var httpHelper = new HttpHelper();
             if (!string.IsNullOrWhiteSpace(apikey))
@@ -224,9 +243,8 @@ namespace Mandrill_Backup
         }
         
         private static void UpdateTemplate(string apikey, string templateContent)
-        {       
-            var reader = new JsonReader();
-            dynamic template = reader.Read(templateContent);
+        {
+            dynamic template = JObject.Parse(templateContent);
 
             var httpHelper = new HttpHelper();
             if (!string.IsNullOrWhiteSpace(apikey))

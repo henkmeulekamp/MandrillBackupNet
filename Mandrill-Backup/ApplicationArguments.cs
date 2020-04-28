@@ -23,6 +23,9 @@ namespace Mandrill_Backup
         public string TemplateName { get; set; }
         [Option('d', "Ignore dates", Required = false, HelpText = "Ignore date fields in meta data")]
         public bool IgnoreDates { get; set; }
+        [Option('f', "Filter templates", Required = false, HelpText = "Export filter")]
+        public string TemplateFilter { get; set; }
+
         [HelpOption]
         public string GetUsage()
         {
