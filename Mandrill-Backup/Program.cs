@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -18,7 +19,10 @@ namespace Mandrill_Backup
 
         private static string FormatTemplateNameToFileName(string templateName)
         {
-            return templateName + ".template.json";
+            return templateName.Replace('/','-')
+                               .Replace('\\', '-')
+                               .Replace('|', '-') 
+                             + ".template.json";
         }
 
         private static string ToJsonPrettyPrint(dynamic obj)
@@ -28,6 +32,8 @@ namespace Mandrill_Backup
         
         static void Main(string[] args)
         {
+           // Debugger.Launch();
+
             var options = new ApplicationArguments();
             if (!CommandLine.Parser.Default.ParseArguments(args, options))
             {               
@@ -78,7 +84,7 @@ namespace Mandrill_Backup
 
                 var content = File.ReadAllText(f.FullName);
                 var templateNameFromFile = f.Name.Replace(".template.json", "");
-                if (currentTemplates.ContainsKey(templateNameFromFile))
+                if (currentTemplates.ContainsKey(templateNameFromFile.ToLowerInvariant()))
                 {
                     if (!content.Equals(currentTemplates[templateNameFromFile]))
                     {
@@ -100,7 +106,7 @@ namespace Mandrill_Backup
         private static IDictionary<string,string> GetTemplatesFromAccount(string apikey,
                         string templateName = null, bool ignoreDates = false)
         {
-            var templatesInAccount= new Dictionary<string,string>();
+            var templatesInAccount= new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
             var reader = new JsonReader();
             var httpHelper = new HttpHelper();
 
@@ -131,7 +137,16 @@ namespace Mandrill_Backup
                         if (HasProperty(t, "updated_at")) t.updated_at = "2015-01-01 10:10:10";
                         if (HasProperty(t, "draft_updated_at")) t.draft_updated_at = "2015-01-01 10:10:10";
                     }
-                    templatesInAccount.Add(t.name, ToJsonPrettyPrint(t));                
+
+                    if (!templatesInAccount.ContainsKey(t.name))
+                        templatesInAccount.Add(t.name, ToJsonPrettyPrint(t));
+                    else
+                    {
+                        //else try add with slug
+                        if (!templatesInAccount.ContainsKey(t.slug))
+                            templatesInAccount.Add(t.slug, ToJsonPrettyPrint(t));
+                        //else just forget
+                    }            
                 }
             }
             return templatesInAccount;
@@ -146,7 +161,7 @@ namespace Mandrill_Backup
 
             foreach (var t in templates)
             {
-                Console.WriteLine("Exporting: " + t.Value);
+                Console.WriteLine("Exporting: " + t.Key);
 
                 File.WriteAllText(Path.Combine(exportDir.FullName, FormatTemplateNameToFileName(t.Key)),
                                   t.Value);
