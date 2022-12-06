@@ -48,7 +48,7 @@ namespace Mandrill_Backup
                     ExportTemplatesToFolder(options.Key, dir, options.TemplateName, options.IgnoreDates, options.TemplateFilter);
                     break;
                 case Action.Import:
-                    ImportFromFolderToMandrill(options.Key, dir, options.TemplateName);
+                    ImportFromFolderToMandrill(options.Key, dir, options.TemplateName, options.TemplateFilter);
                     break;
                 case Action.Delete:
                     DeleteTemplates(options.Key,
@@ -65,10 +65,10 @@ namespace Mandrill_Backup
             return Directory.CreateDirectory(dir.FullName + "\\" + string.Format("backups-{0:yyyy-MM-dd_HH-mm-ss}", DateTime.Now));
         }
 
-        private static void ImportFromFolderToMandrill(string apikey, DirectoryInfo exportDir, string templateName = null)
-        {      
-            var currentTemplates = GetTemplatesFromAccount(apikey, ignoreDates:true);
-            
+        private static void ImportFromFolderToMandrill(string apikey, DirectoryInfo exportDir, string templateName = null, string filter = null)
+        {
+            var currentTemplates = GetTemplatesFromAccount(apikey, ignoreDates: true, filter: filter);
+
             var requestedTemplateFileName = !string.IsNullOrWhiteSpace(templateName)
                 ? FormatTemplateNameToFileName(templateName)
                 : null;
@@ -263,7 +263,9 @@ namespace Mandrill_Backup
 
         internal static bool HasProperty(dynamic d, string propertyname)
         {
-            return ((IDictionary<string, object>) d).ContainsKey(propertyname);
+            var hasProperty =((JObject)d).ContainsKey(propertyname);
+
+            return hasProperty;
         }
     }
 }
